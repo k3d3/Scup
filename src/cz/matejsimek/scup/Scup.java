@@ -407,13 +407,8 @@ public class Scup {
 	  }
 	} else if ("DROPBOX".equals(UPLOAD_METHOD)) {
 	  try {
-		DropboxUpload du = new DropboxUpload(DROPBOX_KEY, DROPBOX_SECRET);
+		DropboxUpload du = new DropboxUpload();
 		url = du.uploadFile(file, remoteFilename);
-		// Save authentication tokens for next time
-		DROPBOX_KEY = du.getKey();
-		DROPBOX_SECRET = du.getSecret();
-		prefs.put(KEY_DROPBOX_KEY, DROPBOX_KEY);
-		prefs.put(KEY_DROPBOX_SECRET, DROPBOX_SECRET);
 
 	  } catch (Exception ex) {
 		trayIcon.displayMessage("Dropbox error", ex.getLocalizedMessage(), TrayIcon.MessageType.ERROR);

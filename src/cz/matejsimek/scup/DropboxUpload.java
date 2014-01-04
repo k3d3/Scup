@@ -1,87 +1,45 @@
 package cz.matejsimek.scup;
 
-import com.dropbox.client2.DropboxAPI;
-import com.dropbox.client2.DropboxAPI.Entry;
-import com.dropbox.client2.exception.DropboxException;
-import com.dropbox.client2.exception.DropboxUnlinkedException;
-import com.dropbox.client2.session.AccessTokenPair;
-import com.dropbox.client2.session.AppKeyPair;
-import com.dropbox.client2.session.RequestTokenPair;
-import com.dropbox.client2.session.Session.AccessType;
-import com.dropbox.client2.session.WebAuthSession;
-import com.dropbox.client2.session.WebAuthSession.WebAuthInfo;
-import java.awt.Desktop;
 import java.io.File;
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.net.URL;
-import javax.swing.JDialog;
-import javax.swing.JFrame;
-import javax.swing.JOptionPane;
+import java.security.SecureRandom;
+import java.util.Arrays;
+
+import org.bouncycastle.crypto.InvalidCipherTextException;
+import org.bouncycastle.crypto.digests.SHA512Digest;
+import org.bouncycastle.crypto.engines.AESFastEngine;
+import org.bouncycastle.crypto.modes.CCMBlockCipher;
+import org.bouncycastle.crypto.params.CCMParameters;
+import org.bouncycastle.crypto.params.KeyParameter;
+
+import org.apache.commons.codec.binary.Base64;
+import org.apache.commons.io.IOUtils;
+import org.apache.http.HttpEntity;
+import org.apache.http.HttpResponse;
+import org.apache.http.HttpVersion;
+import org.apache.http.client.HttpClient;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.mime.MultipartEntity;
+import org.apache.http.entity.mime.content.ContentBody;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.params.CoreProtocolPNames;
+import org.apache.http.entity.mime.content.ByteArrayBody;
+import org.apache.http.entity.mime.content.StringBody;
 
 /**
- * Dropbox file uploading based on Dropbox SDK
+ * Dropbox file uploading based on Dropbox SDK (but hacked to do e.3d3.ca)
  *
- * @author Matej Simek | www.matejsimek.cz
+ * @author Matej Simek | www.matejsimek.cz (but not really)
  */
 public class DropboxUpload {
 
-  final static private String APP_KEY = "zjphszw97j58mlq";
-  final static private String APP_SECRET = "vjzbym5o71u173w";
-  final static private AccessType ACCESS_TYPE = AccessType.APP_FOLDER;
-  private String user_key, user_secret;
-  private WebAuthSession session;
-  private DropboxAPI<WebAuthSession> mDBApi;
+  final static private int MacSize = 64;
+  final static private String PrivKey = "c61540b5ceecd05092799f936e27755f";
+  final static private String SystemUrl = "https://e.3d3.ca";
 
-  /**
-   * Authenticate Scup app on Dropbox webpage and receive API access token
-   *
-   * @throws DropboxException
-   */
-  private void authenticateUser() throws DropboxException {
-	System.out.println("Dropbox authentication...");
-	session.unlink();
-	WebAuthInfo authInfo = session.getAuthInfo();
-	RequestTokenPair pair = authInfo.requestTokenPair;
-	String url = authInfo.url;
 
-	try {
-	  Desktop.getDesktop().browse(new URL(url).toURI());
-	} catch (Exception ex) {
-	  ex.printStackTrace();
-	}
-
-	JOptionPane pane = new JOptionPane("Browser will launch on Dropbox authentication page. \nOnce you have allowed Scup to access, press OK to continue.", JOptionPane.PLAIN_MESSAGE);
-	JDialog dialog = pane.createDialog(new JFrame(), "Scup - Dropbox authentication");
-	dialog.setIconImage(Scup.iconImage);
-	dialog.setAlwaysOnTop(true);
-	dialog.setVisible(true);
-
-	session.retrieveWebAccessToken(pair);
-	AccessTokenPair tokens = session.getAccessTokenPair();
-
-	this.user_key = tokens.key;
-	this.user_secret = tokens.secret;
-
-	// Start Dropbox session
-	mDBApi = new DropboxAPI<WebAuthSession>(session);
-  }
-
-  /**
-   *
-   * @return API token key
-   */
-  public String getKey() {
-	return this.user_key;
-  }
-
-  /**
-   *
-   * @return API token secret
-   */
-  public String getSecret() {
-	return this.user_secret;
-  }
 
   /**
    * Invokes connection to Dropbox API
@@ -90,21 +48,13 @@ public class DropboxUpload {
    * @param secret User API token secret
    * @throws DropboxException
    */
-  public DropboxUpload(String key, String secret) throws DropboxException {
-	AppKeyPair appKeys = new AppKeyPair(APP_KEY, APP_SECRET);
-	session = new WebAuthSession(appKeys, ACCESS_TYPE);
-	this.user_key = key;
-	this.user_secret = secret;
-
-	// Authenticate Scup app when its neccesarry
-	if (key.isEmpty() || secret.isEmpty()) {
-	  authenticateUser();
-	} // Otherwise already authenticated in past
-	else {
-	  session.setAccessTokenPair(new AccessTokenPair(key, secret));
-	  // Start Dropbox session
-	  mDBApi = new DropboxAPI<WebAuthSession>(session);
-	}
+  public DropboxUpload() {
+  }
+  
+  private static int findIVLen(int length) {
+    if (length < 0xFFFF) return 15 - 2;
+    if (length < 0xFFFFFF) return 15 - 3;
+    return 15 - 4;
   }
 
   /**
@@ -115,38 +65,62 @@ public class DropboxUpload {
    * @param fileName name of file on Dropbox
    * @return
    */
-  public String uploadFile(File file, String fileName) {
-	FileInputStream fis = null;
-	try {
-	  fis = new FileInputStream(file);
-	  Entry newEntry = mDBApi.putFileOverwrite(fileName, fis, file.length(), null);
-	  fis.close();
-
-	  return mDBApi.share(newEntry.path).url;
-
-	} // When user removes Scup application from dropbox, unlink happens, dont give up!
-	catch (DropboxUnlinkedException duex) {
-	  try {
-		fis.close();
-		authenticateUser();
-		return uploadFile(file, fileName);
-	  } catch (Exception ex) {
-		ex.printStackTrace();
-	  }
-	} // And many other errors we may ignore
-	catch (Exception ex) {
-	  ex.printStackTrace();
-	}
-	// Close file strem
-	if (fis != null) {
-	  try {
-		fis.close();
-	  } catch (IOException ex) {
-		ex.printStackTrace();
-	  }
-	}
-
-	return null;
-
+  public String uploadFile(File file, String fileName) throws FileNotFoundException, IOException, InvalidCipherTextException {
+      
+    // Do all of the crypto stuff
+    SecureRandom sr = new SecureRandom();
+    
+    byte[] seed = new byte[16];
+    sr.nextBytes(seed);
+    
+    String seedString = Base64.encodeBase64URLSafeString(seed);
+    
+    SHA512Digest dg = new SHA512Digest();
+    dg.update(seed, 0, seed.length);
+    
+    byte[] seedResult = new byte[64];
+    dg.doFinal(seedResult, 0);
+    
+    //byte[] key = Arrays.copyOfRange(seedResult, 0, 32);
+    byte[] iv = Arrays.copyOfRange(seedResult, 32, 48);
+    byte[] ident = Arrays.copyOfRange(seedResult, 48, 64);
+    String identString = Base64.encodeBase64URLSafeString(ident);
+    
+    KeyParameter keyParam = new KeyParameter(seedResult, 0, 32);
+    
+    byte[] fdata = IOUtils.toByteArray(new FileInputStream(file));
+    
+    byte[] civ = Arrays.copyOf(iv, findIVLen(fdata.length));
+    CCMParameters ccmParam = new CCMParameters(keyParam, MacSize, civ, new byte[0]);
+    CCMBlockCipher ccmCipher = new CCMBlockCipher(new AESFastEngine());
+    ccmCipher.init(true, ccmParam);
+    
+    byte[] ct = new byte[ccmCipher.getOutputSize(fdata.length)];
+    ccmCipher.processBytes(fdata, 0, fdata.length, ct, 0);
+    ccmCipher.doFinal(ct, 0);
+    
+    
+    // Do all of the upload stuff
+    HttpClient hc = new DefaultHttpClient();
+    hc.getParams().setParameter(CoreProtocolPNames.PROTOCOL_VERSION, HttpVersion.HTTP_1_1);
+    
+    HttpPost hp = new HttpPost(SystemUrl + "/up");
+    
+    MultipartEntity mpEntity = new MultipartEntity();
+    ContentBody cbBlob = new ByteArrayBody(ct, "blob");
+    mpEntity.addPart("file", cbBlob);
+    ContentBody cbIdent = new StringBody(identString);
+    mpEntity.addPart("ident", cbIdent);
+    ContentBody cbPrivKey = new StringBody(PrivKey);
+    mpEntity.addPart("privkey", cbPrivKey);
+    
+    hp.setEntity(mpEntity);
+    System.out.println("executing request " + hp.getRequestLine());
+    HttpResponse hr = hc.execute(hp);
+    HttpEntity resEntity = hr.getEntity();
+    
+    System.out.println(hr.getStatusLine());
+    
+    return SystemUrl + "/#/" + seedString + "?d";
   }
 }

@@ -241,7 +241,7 @@ public class SettingsForm extends javax.swing.JFrame {
     });
 
     remoteServerGroup.add(dropboxToggle);
-    dropboxToggle.setText("Dropbox");
+    dropboxToggle.setText("Encrypted 3d3");
     dropboxToggle.addActionListener(new java.awt.event.ActionListener() {
       public void actionPerformed(java.awt.event.ActionEvent evt) {
         dropboxToggleActionPerformed(evt);

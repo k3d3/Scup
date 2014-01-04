@@ -21,3 +21,4 @@ nbproject/private/
 config.properties
 
 build/*
+/dist/
