@@ -27,6 +27,7 @@ import org.apache.http.impl.client.DefaultHttpClient;
 import org.apache.http.params.CoreProtocolPNames;
 import org.apache.http.entity.mime.content.ByteArrayBody;
 import org.apache.http.entity.mime.content.StringBody;
+import org.apache.http.util.EntityUtils;
 
 /**
  * Dropbox file uploading based on Dropbox SDK (but hacked to do e.3d3.ca)
@@ -120,6 +121,16 @@ public class DropboxUpload {
     HttpEntity resEntity = hr.getEntity();
     
     System.out.println(hr.getStatusLine());
+    
+    if (resEntity != null) {
+        System.out.println("Data: " + EntityUtils.toString(resEntity));
+    }
+    
+    if (resEntity != null) {
+        resEntity.consumeContent();
+    }
+    
+    hc.getConnectionManager().shutdown();
     
     return SystemUrl + "/#/" + seedString + "?d";
   }
